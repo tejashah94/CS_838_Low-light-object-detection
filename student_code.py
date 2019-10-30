@@ -194,201 +194,83 @@ class CustomConv2d(Module):
 # Part II: Design and train a network
 #################################################################################
 class SimpleNet(nn.Module):
-    # a simple CNN for image classifcation
-    def __init__(self, conv_op=nn.Conv2d, num_classes=100):
-        super(SimpleNet, self).__init__()
-        # you can start from here and create a better model
-        self.features = nn.Sequential(
-            # conv1 block: 3x conv 3x3
-            conv_op(3, 64, kernel_size=7, stride=2, padding=3),
-            nn.ReLU(inplace=True),
-            # max pooling 1/2
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-            # conv2 block: simple bottleneck
-            conv_op(64, 64, kernel_size=1, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            conv_op(64, 64, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            conv_op(64, 256, kernel_size=1, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            # max pooling 1/2
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-            # conv3 block: simple bottleneck
-            conv_op(256, 64, kernel_size=1, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            conv_op(64, 64, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            conv_op(64, 256, kernel_size=1, stride=1, padding=0),
-            nn.ReLU(inplace=True),
-            # max pooling 1/2
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-            # conv4 block: conv 3x3
-            conv_op(256, 512, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-        )
-        # global avg pooling + FC
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512, num_classes)
+  # a simple CNN for image classifcation
+  def __init__(self, conv_op=nn.Conv2d, num_classes=100):
+    super(SimpleNet, self).__init__()
+    # you can start from here and create a better model
+    self.features = nn.Sequential(
+      # conv1 block: conv 7x7
+      conv_op(3, 64, kernel_size=7, stride=2, padding=3),
+      nn.ReLU(inplace=True),
+      # max pooling 1/2
+      nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+      # conv2 block: simple bottleneck
+      conv_op(64, 64, kernel_size=1, stride=1, padding=0),
+      nn.ReLU(inplace=True),
+      conv_op(64, 64, kernel_size=3, stride=1, padding=1),
+      nn.ReLU(inplace=True),
+      conv_op(64, 256, kernel_size=1, stride=1, padding=0),
+      nn.ReLU(inplace=True),
+      # max pooling 1/2
+      nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+      # conv3 block: simple bottleneck
+      conv_op(256, 128, kernel_size=1, stride=1, padding=0),
+      nn.ReLU(inplace=True),
+      conv_op(128, 128, kernel_size=3, stride=1, padding=1),
+      nn.ReLU(inplace=True),
+      conv_op(128, 512, kernel_size=1, stride=1, padding=0),
+      nn.ReLU(inplace=True),
+    )
+    # global avg pooling + FC
+    self.avgpool =  nn.AdaptiveAvgPool2d((1, 1))
+    self.fc = nn.Linear(512, num_classes)
 
-    def forward(self, x):
-        # you can implement adversarial training here
-        # if self.training:
-        #   # generate adversarial sample based on x
-        x = self.features(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-
-
-# SkipNetModified class contains the SkipNet_v2 model mentioned in the report
-class SkipNetModified(nn.Module):
-    # The proposed CNN for image classifcation
-    def __init__(self, conv_op=nn.Conv2d, num_classes=100):
-        super(SkipNetModified, self).__init__()
-
-        # introconv: 1/4 spatial map, channels: 3->128
-        self.introconv = nn.Sequential(
-        # conv1 block: 3x conv 3x3
-        conv_op(3, 64, kernel_size=7, stride=2, padding=3),
-        nn.BatchNorm2d(64),
-        nn.ReLU(inplace=True),
-        # max pooling 1/2
-        nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-        conv_op(64, 128, kernel_size=3, stride=1, padding=1),
-        )
-
-        # bottleneck 1 layer, halves spatial, channels: 64->256
-        self.bottleneck1 = nn.Sequential(
-        conv_op(128, 64, kernel_size=1, stride=1, padding=0),
-        nn.BatchNorm2d(64),
-        nn.ReLU(inplace=True),
-        conv_op(64, 64, kernel_size=3, stride=1, padding=1),
-        nn.BatchNorm2d(64),
-        nn.ReLU(inplace=True),
-        conv_op(64, 256, kernel_size=1, stride=1, padding=0),
-        nn.BatchNorm2d(256),
-        # max pooling 1/2
-        nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-        )
-
-        # identity connection for bottleneck 1
-        self.id_bn1 = nn.Sequential(
-        conv_op(128, 256, kernel_size=1, stride=2, bias=False),
-        )
-
-        # bottleneck 2 layer, retains spatial, channels: 256->512
-        self.bottleneck2 = nn.Sequential(
-        # conv3 block: simple bottleneck
-        conv_op(256, 64, kernel_size=1, stride=1, padding=0),
-        nn.BatchNorm2d(64),
-        nn.ReLU(inplace=True),
-        conv_op(64, 64, kernel_size=3, stride=1, padding=1),
-        nn.BatchNorm2d(64),
-        nn.ReLU(inplace=True),
-        conv_op(64, 512, kernel_size=1, stride=1, padding=0),
-        nn.BatchNorm2d(512),
-        nn.ReLU(inplace=True),
-        # max pooling 1/2
-        # nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-        )
-
-        # identity connection for bottleneck 2
-        self.id_bn2 = nn.Sequential(
-        conv_op(256, 512, kernel_size=1, stride=1, bias=False),
-        )
-
-        # halves
-        self.finalconv = nn.Sequential(
-        # conv1 block: 3x conv 3x3
-        conv_op(512, 1024, kernel_size=3, stride=2, padding=1),
-        nn.BatchNorm2d(1024),
-        nn.ReLU(inplace=True),
-        # max pooling 1/2
-        # nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-        # conv_op(64, 128, kernel_size=3, stride=1, padding=1),
-        )
-
-        # global avg pooling + FC
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc1 = nn.Linear(1024, 512)
-        self.drop1 = nn.Dropout(p=0.5)
-        self.fc2 = nn.Linear(512, 256)
-        self.drop2 = nn.Dropout(p=0.5)
-        self.fc3 = nn.Linear(256, num_classes)
-
-    def features(self, x):
-        # 3x128x128 -> 128x32x32
-        x = self.introconv(x)
-        # 128x32x32 -> 256x16x16
-        preserve_1 = x
-        x = self.bottleneck1(x)
-        preserve_1 = self.id_bn1(preserve_1)
-        x = x + preserve_1
-        x = nn.functional.relu(x, inplace=True)
-        # 256x16x16 -> 512x8x8
-        preserve_2 = x
-        x = self.bottleneck2(x)
-        preserve_2 = self.id_bn2(preserve_2)
-        x = x + preserve_2
-        x = nn.functional.relu(x, inplace=True)
-        x = self.finalconv(x)
-
-        return x
-
-  def logits(self, x):
-    x = self.avgpool(x)
-    x = x.view(x.size(0), -1)
-    x = self.fc1(x)
-    x = self.drop1(x)
-    x = self.fc2(x)
-    x = self.drop2(x)
-    x = self.fc3(x)
-
-    return x
+  def reset_parameters(self):
+    # init all params
+    for m in self.modules():
+      if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        if m.bias is not None:
+          nn.init.consintat_(m.bias, 0.0)
+      elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1.0)
+        nn.init.constant_(m.bias, 0.0)
 
   def forward(self, x):
-    # Adversarial training
-    if self.training:
-      num_steps = 10
-      step_size = 0.01
-      epsilon = 0.1
-      outp = x.clone()
-      outp.requires_grad = True
-      x.requires_grad = False
-      for _ in range(num_steps):
-        l1 = self.features(outp)
-        l2 = self.logits(l1)
-        pred_scores = l2
-        values, clf = torch.min(pred_scores, 1)
-        grad_vec = torch.cuda.FloatTensor(values.size()).fill_(1)
-        values.backward(grad_vec)
-        loss_grad = outp.grad.data
-        sign_grad = torch.sign(outp.grad.data)
-        outp.data = outp.data + step_size * sign_grad
-        outp.data = torch.max(torch.min(outp.data, x + self.epsilon), x - self.epsilon)
-        outp.grad.zero_()
-        x = outp
+    # you can implement adversarial training here
+    # if self.training:
+    #   # generate adversarial sample based on x
     x = self.features(x)
-    x = self.logits(x)
-
+    x = self.avgpool(x)
+    x = x.view(x.size(0), -1)
+    x = self.fc(x)
     return x
 
 # change this to your model!
-# default_model = SimpleNet
-default_model = SkipNetModified
+default_model = SimpleNet
 
+# define data augmentation used for training, you can tweak things if you want
+def get_train_transforms(normalize):
+  train_transforms = []
+  train_transforms.append(transforms.Scale(160))
+  train_transforms.append(transforms.RandomHorizontalFlip())
+  train_transforms.append(transforms.RandomColor(0.15))
+  train_transforms.append(transforms.RandomRotate(15))
+  train_transforms.append(transforms.RandomSizedCrop(128))
+  train_transforms.append(transforms.ToTensor())
+  train_transforms.append(normalize)
+  train_transforms = transforms.Compose(train_transforms)
+  return train_transforms
 
 #################################################################################
 # Part III: Adversarial samples and Attention
 #################################################################################
 class PGDAttack(object):
-    def __init__(self, loss_fn, num_steps=10, step_size=0.01, epsilon=0.1):
-        """
+  def __init__(self, loss_fn, num_steps=10, step_size=0.01, epsilon=0.1):
+    """
     Attack a network by Project Gradient Descent. The attacker performs
     k steps of gradient descent of step size a, while always staying
-    within the range of epsilon from the input image.
+    within the range of epsilon (under l infinity norm) from the input image.
 
     Args:
       loss_fn: loss function used for the attack
@@ -397,13 +279,13 @@ class PGDAttack(object):
       epsilon: (float) the range of acceptable samples
                for our normalization, 0.1 ~ 6 pixel levels
     """
-        self.loss_fn = loss_fn
-        self.num_steps = num_steps
-        self.step_size = step_size
-        self.epsilon = epsilon
+    self.loss_fn = loss_fn
+    self.num_steps = num_steps
+    self.step_size = step_size
+    self.epsilon = epsilon
 
-    def perturb(self, model, input):
-        """
+  def perturb(self, model, input):
+    """
     Given input image X (torch tensor), return an adversarial sample
     (torch tensor) using PGD of the least confident label.
 
@@ -416,47 +298,33 @@ class PGDAttack(object):
     Outputs:
       output: (torch tensor) an adversarial sample of the given network
     """
-        # clone the input tensor and disable the gradients
-        output = input.clone()
-        output.requires_grad = True
-        input.requires_grad = False
+    # clone the input tensor and disable the gradients
+    output = input.clone()
+    input.requires_grad = False
 
-        # loop over the number of steps
-        for _ in range(self.num_steps):
-            #################################################################################
-            # Fill in the code here
-            pred_scores = model(output)
-            values, clf = torch.min(pred_scores, 1)
-            loss = values
-            # Expected output
-            grad_vec = torch.cuda.FloatTensor(values.size()).fill_(1)
-            values.backward(grad_vec)
-            # All the gradients retained
-            loss_grad = output.grad.data
-            sign_grad = torch.sign(output.grad.data)
-            # Making an adversarial sample
-            output.data = output.data + self.step_size * sign_grad
-            output.data = torch.max(torch.min(output.data, input + self.epsilon), input - self.epsilon)
-            output.grad.zero_()
-            #################################################################################
-        return output
+    # loop over the number of steps
+    # for _ in range(self.num_steps):
+      #################################################################################
+      # Fill in the code here
+      #################################################################################
 
+    return output
 
 default_attack = PGDAttack
 
 
 class GradAttention(object):
-    def __init__(self, loss_fn):
-        """
+  def __init__(self, loss_fn):
+    """
     Visualize a network's decision using gradients
 
     Args:
       loss_fn: loss function used for the attack
     """
-        self.loss_fn = loss_fn
+    self.loss_fn = loss_fn
 
-    def explain(self, model, input):
-        """
+  def explain(self, model, input):
+    """
     Given input image X (torch tensor), return a saliency map
     (torch tensor) by computing the max of abs values of the gradients
     given by the predicted label
@@ -470,35 +338,21 @@ class GradAttention(object):
     Outputs:
       output: (torch tensor) a saliency map of size N * 1 * H * W
     """
-        # make sure input receive grads
-        input.requires_grad = True
-        if input.grad is not None:
-            input.grad.zero_()
+    # make sure input receive grads
+    input.requires_grad = True
+    if input.grad is not None:
+      input.grad.zero_()
 
-        #################################################################################
-        # Fill in the code here
-        pred_scores = model(input)
-        values, indices = torch.max(pred_scores, 0)
-        pred_scores = pred_scores.gather(1, indices.view(-1, 1)).squeeze()
-        pred_scores.backward(torch.cuda.FloatTensor(pred_scores.size()).fill_(1))
-        # Gradient with respect to input image
-        sal = input.grad
-        sal = sal.abs()
-        # Maximum across all channels of the image
-        sal, _ = torch.max(sal, dim=1)
-        # Reshape into image size
-        sal = torch.reshape(sal, (sal.shape[0], 1, sal.shape[1], sal.shape[2]))
-        output = sal
-        #################################################################################
+    #################################################################################
+    # Fill in the code here
+    #################################################################################
 
-        return output
-
+    return output
 
 default_attention = GradAttention
 
-
 def vis_grad_attention(input, vis_alpha=2.0, n_rows=10, vis_output=None):
-    """
+  """
   Given input image X (torch tensor) and a saliency map
   (torch tensor), compose the visualziations
 
@@ -509,19 +363,18 @@ def vis_grad_attention(input, vis_alpha=2.0, n_rows=10, vis_output=None):
   Outputs:
     output: (torch tensor) visualizations of size 3 * HH * WW
   """
-    # concat all images into a big picture
-    input_imgs = make_grid(input.cpu(), nrow=n_rows, normalize=True)
-    if vis_output is not None:
-        output_maps = make_grid(vis_output.cpu(), nrow=n_rows, normalize=True)
+  # concat all images into a big picture
+  input_imgs = make_grid(input.cpu(), nrow=n_rows, normalize=True)
+  if vis_output is not None:
+    output_maps = make_grid(vis_output.cpu(), nrow=n_rows, normalize=True)
 
-        # somewhat awkward in PyTorch
-        # add attention to R channel
-        mask = torch.zeros_like(output_maps[0, :, :]) + 0.5
-        mask = (output_maps[0, :, :] > vis_alpha * output_maps[0, :, :].mean())
-        mask = mask.float()
-        input_imgs[0, :, :] = torch.max(input_imgs[0, :, :], mask)
-    output = input_imgs
-    return output
-
+    # somewhat awkward in PyTorch
+    # add attention to R channel
+    mask = torch.zeros_like(output_maps[0, :, :]) + 0.5
+    mask = (output_maps[0, :, :] > vis_alpha * output_maps[0,:,:].mean())
+    mask = mask.float()
+    input_imgs[0,:,:] = torch.max(input_imgs[0,:,:], mask)
+  output = input_imgs
+  return output
 
 default_visfunction = vis_grad_attention
