@@ -78,7 +78,7 @@ PATH_TO_LABELS = 'data/mscoco_label_map.pbtxt'
 category_index = label_map_util.create_category_index_from_labelmap(PATH_TO_LABELS, use_display_name=True)
 
 model_name = 'ssd_mobilenet_v1_coco_2017_11_17'
-detection_model = load_model(model_name)
+model = load_model(model_name)
 
 # [<tf.Tensor 'image_tensor:0' shape=(None, None, None, 3) dtype=uint8>]
 # {'detection_scores': tf.float32,
@@ -95,15 +95,12 @@ failed_list = []
 dataset_path = "./models/research/object_detection/ExDark"
 test_path = glob.glob(dataset_path+"/*/*.jpg")
 test_path.extend(glob.glob(dataset_path+"/*/*.png"))
+
+output_hub = []
 for idx, img_path in enumerate(test_path):
-#     savefolder = '.'+os.path.dirname(img_path)[34:]
-#     savepath = savefolder+'/'+os.path.basename(img_path)
-#     print(savepath)
-#     if not os.path.exists(savefolder):
-#         os.makedirs(savefolder)
-#     try:
-#         show_inference(masking_model, img_path, savepath)
-#     except:
-#         failed_list.append(img_path)
-    
-    print(idx, len(test_path))
+    try:
+        output_hub.append({path: img_path,
+                       resutl: run_inference_for_single_image(model, img_path)})
+    except:
+        failed_list.append(img_path)
+np.save("inference_result.npy", output_hub)
