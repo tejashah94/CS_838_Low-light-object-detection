@@ -100,7 +100,7 @@ output_hub = []
 for idx, img_path in enumerate(test_path):
     try:
         output_hub.append({path: img_path,
-                       resutl: run_inference_for_single_image(model, img_path)})
+                           resutl: run_inference_for_single_image(model, img_path)})
     except:
         failed_list.append(img_path)
 np.save("inference_result.npy", output_hub)
