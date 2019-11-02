@@ -64,13 +64,13 @@ def run_inference_for_single_image(model, image):
 
     # Handle models with masks:
     if 'detection_masks' in output_dict:
-    # Reframe the the bbox mask to the image size.
-    detection_masks_reframed = utils_ops.reframe_box_masks_to_image_masks(
-              output_dict['detection_masks'], output_dict['detection_boxes'],
-               image.shape[0], image.shape[1])      
-    detection_masks_reframed = tf.cast(detection_masks_reframed > 0.5,
-                                       tf.uint8)
-    output_dict['detection_masks_reframed'] = detection_masks_reframed.numpy()
+        # Reframe the the bbox mask to the image size.
+        detection_masks_reframed = utils_ops.reframe_box_masks_to_image_masks(
+                  output_dict['detection_masks'], output_dict['detection_boxes'],
+                   image.shape[0], image.shape[1])      
+        detection_masks_reframed = tf.cast(detection_masks_reframed > 0.5,
+                                           tf.uint8)
+        output_dict['detection_masks_reframed'] = detection_masks_reframed.numpy()
 
     return output_dict
 
