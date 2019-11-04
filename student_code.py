@@ -11,6 +11,7 @@ from torch.nn.functional import fold, unfold
 from torchvision.utils import make_grid
 import math
 from utils import resize_image
+import custom_transforms as transforms
 
 
 #################################################################################
@@ -22,6 +23,7 @@ from utils import resize_image
 # Part I: Understanding Convolutions
 #################################################################################
 class CustomConv2DFunction(Function):
+
 
     @staticmethod
     def forward(ctx, input_feats, weight, bias, stride=1, padding=0):
@@ -141,54 +143,52 @@ custom_conv2d = CustomConv2DFunction.apply
 
 
 class CustomConv2d(Module):
-    """
+  """
   The same interface as torch.nn.Conv2D
   """
+  def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+         padding=0, dilation=1, groups=1, bias=True):
+    super(CustomConv2d, self).__init__()
+    assert isinstance(kernel_size, int), "We only support squared filters"
+    assert isinstance(stride, int), "We only support equal stride"
+    assert isinstance(padding, int), "We only support equal padding"
+    self.in_channels = in_channels
+    self.out_channels = out_channels
+    self.kernel_size = kernel_size
+    self.stride = stride
+    self.padding = padding
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True):
-        super(CustomConv2d, self).__init__()
-        assert isinstance(kernel_size, int), "We only support squared filters"
-        assert isinstance(stride, int), "We only support equal stride"
-        assert isinstance(padding, int), "We only support equal padding"
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
+    # not used (for compatibility)
+    self.dilation = dilation
+    self.groups = groups
 
-        # not used (for compatibility)
-        self.dilation = dilation
-        self.groups = groups
+    # register weight and bias as parameters
+    self.weight = nn.Parameter(torch.Tensor(
+      out_channels, in_channels, kernel_size, kernel_size))
+    if bias:
+      self.bias = nn.Parameter(torch.Tensor(out_channels))
+    else:
+      self.register_parameter('bias', None)
+    self.reset_parameters()
 
-        # register weight and bias as parameters
-        self.weight = nn.Parameter(torch.Tensor(
-            out_channels, in_channels, kernel_size, kernel_size))
-        if bias:
-            self.bias = nn.Parameter(torch.Tensor(out_channels))
-        else:
-            self.register_parameter('bias', None)
-        self.reset_parameters()
+  def reset_parameters(self):
+  	# initialization using Kaiming uniform
+    nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+    if self.bias is not None:
+      fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+      bound = 1 / math.sqrt(fan_in)
+      nn.init.uniform_(self.bias, -bound, bound)
 
-    def reset_parameters(self):
-        # initialization using Kaiming uniform
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in)
-            nn.init.uniform_(self.bias, -bound, bound)
+  def forward(self, input):
+    # call our custom conv2d op
+    return custom_conv2d(input, self.weight, self.bias, self.stride, self.padding)
 
-    def forward(self, input):
-        # call our custom conv2d op
-        return custom_conv2d(input, self.weight, self.bias, self.stride, self.padding)
-
-    def extra_repr(self):
-        s = ('{in_channels}, {out_channels}, kernel_size={kernel_size}'
-             ', stride={stride}, padding={padding}')
-        if self.bias is None:
-            s += ', bias=False'
-        return s.format(**self.__dict__)
-
+  def extra_repr(self):
+    s = ('{in_channels}, {out_channels}, kernel_size={kernel_size}'
+         ', stride={stride}, padding={padding}')
+    if self.bias is None:
+      s += ', bias=False'
+    return s.format(**self.__dict__)
 
 #################################################################################
 # Part II: Design and train a network
@@ -240,10 +240,161 @@ class SimpleNet(nn.Module):
     # you can implement adversarial training here
     # if self.training:
     #   # generate adversarial sample based on x
+    if self.training:
+      num_steps = 5
+      step_size = 0.01
+      epsilon = 0.1
+      outp = x.clone()
+      outp.requires_grad = True
+      x.requires_grad = False
+      for _ in range(num_steps):
+        l1 = self.features(outp)
+        l1 = self.avgpool(l1)
+        l1 = l1.view(l1.size(0), -1)
+        l2 = self.fc(l1)
+        pred_scores = l2
+        values, clf = torch.min(pred_scores, 1)
+        grad_vec = torch.cuda.FloatTensor(values.size()).fill_(1)
+        values.backward(grad_vec)
+        loss_grad = outp.grad.data
+        sign_grad = torch.sign(outp.grad.data)
+        outp.data = outp.data + step_size * sign_grad
+        outp.data = torch.max(torch.min(outp.data, x + epsilon), x - epsilon)
+        outp.grad.zero_()
+        x = outp
     x = self.features(x)
     x = self.avgpool(x)
     x = x.view(x.size(0), -1)
     x = self.fc(x)
+    return x
+
+class MyNet(nn.Module):
+    # Proposed network for the image classifcation task
+  def __init__(self, conv_op=nn.Conv2d, num_classes=100):
+     super(MyNet, self).__init__()
+
+     # introconv: 1/4 spatial map, channels: 3->128
+     self.introconv = nn.Sequential(
+     # conv1 block: 3x conv 3x3
+     conv_op(3, 64, kernel_size=7, stride=2, padding=3),
+     nn.BatchNorm2d(64),
+     nn.ReLU(inplace=True),
+     # max pooling 1/2
+     nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+     conv_op(64, 128, kernel_size=3, stride=1, padding=1),
+     )
+
+        # bottleneck 1 layer, halves spatial, channels: 64->256
+     self.bottleneck1 = nn.Sequential(
+     conv_op(128, 64, kernel_size=1, stride=1, padding=0),
+     nn.BatchNorm2d(64),
+     nn.ReLU(inplace=True),
+     conv_op(64, 64, kernel_size=3, stride=1, padding=1),
+     nn.BatchNorm2d(64),
+     nn.ReLU(inplace=True),
+     conv_op(64, 256, kernel_size=1, stride=1, padding=0),
+     nn.BatchNorm2d(256),
+     # max pooling 1/2
+     nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+     )
+
+     # identity connection for bottleneck 1
+     self.id_bn1 = nn.Sequential(
+     conv_op(128, 256, kernel_size=1, stride=2, bias=False),
+     )
+
+     # bottleneck 2 layer, retains spatial, channels: 256->512
+     self.bottleneck2 = nn.Sequential(
+     # conv3 block: simple bottleneck
+     conv_op(256, 64, kernel_size=1, stride=1, padding=0),
+     nn.BatchNorm2d(64),
+     nn.ReLU(inplace=True),
+     conv_op(64, 64, kernel_size=3, stride=1, padding=1),
+     nn.BatchNorm2d(64),
+     nn.ReLU(inplace=True),
+     conv_op(64, 512, kernel_size=1, stride=1, padding=0),
+     nn.BatchNorm2d(512),
+     nn.ReLU(inplace=True),
+     # max pooling 1/2
+     # nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+     )
+
+        # identity connection for bottleneck 2
+     self.id_bn2 = nn.Sequential(
+     conv_op(256, 512, kernel_size=1, stride=1, bias=False),
+     )
+
+     # halves
+     self.finalconv = nn.Sequential(
+     # conv1 block: 3x conv 3x3
+     conv_op(512, 1024, kernel_size=3, stride=2, padding=1),
+     nn.BatchNorm2d(1024),
+     nn.ReLU(inplace=True),
+     # max pooling 1/2
+     # nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+     # conv_op(64, 128, kernel_size=3, stride=1, padding=1),
+     )
+
+     # global avg pooling + FC
+     self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+     self.fc1 = nn.Linear(1024, 512)
+     self.drop1 = nn.Dropout(p=0.5)
+     self.fc2 = nn.Linear(512, 256)
+     self.drop2 = nn.Dropout(p=0.5)
+     self.fc3 = nn.Linear(256, num_classes)
+
+  def features(self, x):
+    # 3x128x128 -> 128x32x32
+    x = self.introconv(x)
+    # 128x32x32 -> 256x16x16
+    preserve_1 = x
+    x = self.bottleneck1(x)
+    preserve_1 = self.id_bn1(preserve_1)
+    x = x + preserve_1
+    x = nn.functional.relu(x, inplace=True)
+    # 256x16x16 -> 512x8x8
+    preserve_2 = x
+    x = self.bottleneck2(x)
+    preserve_2 = self.id_bn2(preserve_2)
+    x = x + preserve_2
+    x = nn.functional.relu(x, inplace=True)
+    x = self.finalconv(x)
+    return x
+
+  def logits(self, x):
+    x = self.avgpool(x)
+    x = x.view(x.size(0), -1)
+    x = self.fc1(x)
+    x = self.drop1(x)
+    x = self.fc2(x)
+    x = self.drop2(x)
+    x = self.fc3(x)
+    return x
+
+  def forward(self, x):
+    # Adversarial training
+    #if self.training:
+    #  num_steps = 10
+    #  step_size = 0.01
+    #  epsilon = 0.1
+    #  outp = x.clone()
+    #  outp.requires_grad = True
+    #  x.requires_grad = False
+    #  for _ in range(num_steps):
+    #    l1 = self.features(outp)
+    #    l2 = self.logits(l1)
+    #    pred_scores = l2
+    #    values, clf = torch.min(pred_scores, 1)
+    #    grad_vec = torch.cuda.FloatTensor(values.size()).fill_(1)
+    #    values.backward(grad_vec)
+    #    loss_grad = outp.grad.data
+    #    sign_grad = torch.sign(outp.grad.data)
+    #    outp.data = outp.data + step_size * sign_grad
+    #    outp.data = torch.max(torch.min(outp.data, x + epsilon), x - epsilon)
+    #    outp.grad.zero_()
+    #    x = outp
+    x = self.features(x)
+    x = self.logits(x)
     return x
 
 # change this to your model!
@@ -302,11 +453,26 @@ class PGDAttack(object):
     output = input.clone()
     input.requires_grad = False
 
+    output.requires_grad = True
+
     # loop over the number of steps
-    # for _ in range(self.num_steps):
-      #################################################################################
-      # Fill in the code here
-      #################################################################################
+    for _ in range(self.num_steps):
+    #################################################################################
+    # Fill in the code here
+        pred_scores = model(output)
+        values, clf = torch.min(pred_scores, 1)
+        loss = values
+        # Expected output
+        grad_vec = torch.cuda.FloatTensor(values.size()).fill_(1)
+        values.backward(grad_vec)
+        # All the gradients retained
+        loss_grad = output.grad.data
+        sign_grad = torch.sign(output.grad.data)
+        # Making an adversarial sample
+        output.data = output.data + self.step_size * sign_grad
+        output.data = torch.max(torch.min(output.data, input + self.epsilon), input - self.epsilon)
+        output.grad.zero_()
+    #################################################################################
 
     return output
 
@@ -345,11 +511,24 @@ class GradAttention(object):
 
     #################################################################################
     # Fill in the code here
+    pred_scores = model(input)
+    values, indices = torch.max(pred_scores, 0)
+    pred_scores = pred_scores.gather(1, indices.view(-1, 1)).squeeze()
+    pred_scores.backward(torch.cuda.FloatTensor(pred_scores.size()).fill_(1))
+    # Gradient with respect to input image
+    sal = input.grad
+    sal = sal.abs()
+    # Maximum across all channels of the image
+    sal, _ = torch.max(sal, dim=1)
+    # Reshape into image size
+    sal = torch.reshape(sal, (sal.shape[0], 1, sal.shape[1], sal.shape[2]))
+    output = sal
     #################################################################################
 
     return output
 
 default_attention = GradAttention
+
 
 def vis_grad_attention(input, vis_alpha=2.0, n_rows=10, vis_output=None):
   """
