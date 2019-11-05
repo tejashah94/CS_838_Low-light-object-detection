@@ -271,10 +271,9 @@ class SimpleNet(nn.Module):
 
         x = np.clip(x, input-eps, input+eps)
         x = np.clip(x, 0, 1) # ensure valid pixel range
-        x = torch.LongTensor(x)
-        x.grad.zero_()
+        x = torch.LongTensor(x).grad.zero_()
         
-    return torch.LongTensor(x)
+    return x
 
 class MyNet(nn.Module):
     # Proposed network for the image classifcation task
