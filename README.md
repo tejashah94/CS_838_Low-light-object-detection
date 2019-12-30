@@ -5,7 +5,6 @@ Faster-RCNN_ResNet-50 / SSD_ResNet-50-FPN: https://github.com/tensorflow/models/
 CycleGAN: https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix
 
 TensorRT Faster-RCNN models: https://github.com/NVIDIA/TensorRT/tree/release/6.0/samples/opensource/sampleUffFasterRCNN
-                             https://github.com/NVIDIA/TensorRT/tree/release/6.0/samples/opensource/sampleUffFasterRCNN
                              
                              
                              
